@@ -1,0 +1,56 @@
+# Docker ignore file
+# Exclude files not needed in the container
+
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv
+venv/
+ENV/
+.conda/
+
+# Jupyter
+.ipynb_checkpoints
+notebooks/
+
+# Data (raw data not needed in production)
+data/raw/
+*.csv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Testing
+tests/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Documentation
+*.md
+!README.md
+docs/
+
+# Environment
+.env
+.env.*
+environment.yml
+
+# Build artifacts
+*.egg-info/
+dist/
+build/
+
+# Logs
+*.log
+logs/

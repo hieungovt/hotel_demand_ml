@@ -1,0 +1,41 @@
+# Docker Compose for local development
+version: '3.8'
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    ports:
+      - "8000:8000"
+    environment:
+      - PORT=8000
+    volumes:
+      # Mount models for easy updates without rebuilding
+      - ./models:/app/models:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  # Development service with hot reload
+  api-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    ports:
+      - "8001:8000"
+    environment:
+      - PORT=8000
+    volumes:
+      - ./src:/app/src:ro
+      - ./api:/app/api:ro
+      - ./models:/app/models:ro
+    command: ["sh", "-c", "cd api && python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload"]
+    profiles:
+      - dev
