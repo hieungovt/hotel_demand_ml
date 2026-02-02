@@ -38,14 +38,21 @@ async def load_models():
     ts_path = os.path.join(MODELS_DIR, 'demand_model.pkl')
     
     if os.path.exists(clf_path):
-        classifier = CancellationClassifier.load(clf_path)
-        print("Classification model loaded")
+        try:
+            classifier = CancellationClassifier.load(clf_path)
+            print("Classification model loaded")
+        except Exception as e:
+            print(f"Warning: Failed to load classification model: {e}")
     else:
         print(f"Warning: Classification model not found at {clf_path}")
     
     if os.path.exists(ts_path):
-        forecaster = DemandForecaster.load(ts_path)
-        print("Demand forecaster loaded")
+        try:
+            forecaster = DemandForecaster.load(ts_path)
+            print("Demand forecaster loaded")
+        except Exception as e:
+            print(f"Warning: Failed to load demand model: {e}")
+            print("Time series forecasting will be unavailable")
     else:
         print(f"Warning: Demand model not found at {ts_path}")
 

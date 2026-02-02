@@ -167,19 +167,23 @@ class DemandForecaster:
     
     def save(self, filepath: str):
         """Save model to disk."""
+        import json
+        from prophet.serialize import model_to_json
+        
         os.makedirs(os.path.dirname(filepath), exist_ok=True)
         
         if self.model_type in ['arima', 'sarima']:
             joblib.dump({
                 'model_type': self.model_type,
                 'fitted_model': self.fitted_model,
-                'history': self.history
+                'history': self.history.to_dict() if self.history is not None else None
             }, filepath)
         elif self.model_type == 'prophet':
+            # Use Prophet's native JSON serialization for compatibility
             joblib.dump({
                 'model_type': self.model_type,
-                'model': self.model,
-                'history': self.history
+                'model_json': model_to_json(self.model),
+                'history': self.history.to_dict() if self.history is not None else None
             }, filepath)
         
         print(f"Model saved to {filepath}")
@@ -187,15 +191,29 @@ class DemandForecaster:
     @classmethod
     def load(cls, filepath: str) -> 'DemandForecaster':
         """Load model from disk."""
+        import json
+        from prophet.serialize import model_from_json
+        import pandas as pd
+        
         data = joblib.load(filepath)
         
         instance = cls(model_type=data['model_type'])
-        instance.history = data['history']
+        
+        # Handle both old and new serialization formats
+        if 'history' in data and data['history'] is not None:
+            if isinstance(data['history'], dict):
+                instance.history = pd.DataFrame(data['history'])
+            else:
+                instance.history = data['history']
         
         if data['model_type'] in ['arima', 'sarima']:
             instance.fitted_model = data['fitted_model']
         else:
-            instance.model = data['model']
+            # Handle both old (model object) and new (JSON) formats
+            if 'model_json' in data:
+                instance.model = model_from_json(data['model_json'])
+            else:
+                instance.model = data['model']
         
         return instance
 
