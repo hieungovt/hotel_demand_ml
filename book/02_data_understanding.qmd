@@ -1,0 +1,491 @@
+---
+title: "Data Understanding"
+---
+
+# Data Understanding {#sec-data-understanding}
+
+The second phase of CRISP-DM involves collecting, describing, and exploring the data to understand its characteristics, quality, and potential for addressing the business objectives.
+
+```{python}
+#| label: setup
+#| output: false
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+import warnings
+
+warnings.filterwarnings('ignore')
+plt.style.use('seaborn-v0_8-whitegrid')
+sns.set_palette("husl")
+
+# Load the dataset
+df = pd.read_csv('../data/raw/hotel_bookings.csv')
+print(f"Dataset loaded: {df.shape[0]:,} rows, {df.shape[1]} columns")
+```
+
+## Data Collection
+
+### Dataset Overview
+
+The dataset contains booking information for two hotels: a **Resort Hotel** and a **City Hotel**. Each record represents a single booking with information about the customer, booking details, and outcome.
+
+```{python}
+#| label: tbl-dataset-overview
+#| tbl-cap: "Dataset Overview"
+
+overview = pd.DataFrame({
+    'Metric': ['Total Records', 'Features', 'Hotel Types', 'Date Range', 'Target Variable'],
+    'Value': [
+        f"{df.shape[0]:,}",
+        f"{df.shape[1]}",
+        f"{df['hotel'].nunique()} ({', '.join(df['hotel'].unique())})",
+        f"{df['arrival_date_year'].min()} - {df['arrival_date_year'].max()}",
+        "is_canceled (0=No, 1=Yes)"
+    ]
+})
+overview
+```
+
+### Feature Descriptions
+
+```{python}
+#| label: tbl-features
+#| tbl-cap: "Dataset Features and Types"
+
+feature_info = pd.DataFrame({
+    'Feature': df.columns,
+    'Type': df.dtypes.values,
+    'Non-Null Count': df.notnull().sum().values,
+    'Null Count': df.isnull().sum().values,
+    'Unique Values': df.nunique().values
+})
+feature_info
+```
+
+### Sample Records
+
+```{python}
+#| label: sample-data
+df.head(10)
+```
+
+## Data Description
+
+### Numerical Features Summary
+
+```{python}
+#| label: tbl-numerical-summary
+#| tbl-cap: "Summary Statistics for Numerical Features"
+
+numerical_cols = df.select_dtypes(include=[np.number]).columns
+df[numerical_cols].describe().round(2)
+```
+
+### Categorical Features Summary
+
+```{python}
+#| label: categorical-summary
+
+categorical_cols = df.select_dtypes(include=['object']).columns
+print(f"Categorical features: {len(categorical_cols)}")
+
+for col in categorical_cols:
+    print(f"\n{col}:")
+    print(df[col].value_counts().head(5))
+```
+
+## Data Exploration
+
+### Target Variable Distribution
+
+```{python}
+#| label: fig-target-dist
+#| fig-cap: "Distribution of Booking Cancellations"
+
+fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+
+# Overall cancellation rate
+cancel_counts = df['is_canceled'].value_counts()
+colors = ['#2ecc71', '#e74c3c']
+axes[0].pie(cancel_counts, labels=['Not Canceled', 'Canceled'], 
+            autopct='%1.1f%%', colors=colors, explode=(0, 0.05),
+            shadow=True, startangle=90)
+axes[0].set_title('Overall Cancellation Rate', fontsize=14, fontweight='bold')
+
+# By hotel type
+cancel_by_hotel = df.groupby('hotel')['is_canceled'].mean() * 100
+bars = axes[1].bar(cancel_by_hotel.index, cancel_by_hotel.values, color=['#3498db', '#9b59b6'])
+axes[1].set_ylabel('Cancellation Rate (%)', fontsize=12)
+axes[1].set_title('Cancellation Rate by Hotel Type', fontsize=14, fontweight='bold')
+for bar, val in zip(bars, cancel_by_hotel.values):
+    axes[1].text(bar.get_x() + bar.get_width()/2, bar.get_height() + 1, 
+                 f'{val:.1f}%', ha='center', fontsize=12, fontweight='bold')
+
+plt.tight_layout()
+plt.show()
+
+print(f"\nOverall Cancellation Rate: {df['is_canceled'].mean()*100:.2f}%")
+```
+
+### Temporal Patterns
+
+```{python}
+#| label: fig-temporal-patterns
+#| fig-cap: "Temporal Distribution of Bookings"
+
+fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+
+# By year
+yearly = df.groupby('arrival_date_year').agg({
+    'hotel': 'count',
+    'is_canceled': 'mean'
+}).rename(columns={'hotel': 'bookings', 'is_canceled': 'cancel_rate'})
+
+axes[0, 0].bar(yearly.index.astype(str), yearly['bookings'], color='#3498db')
+axes[0, 0].set_title('Bookings by Year', fontsize=12, fontweight='bold')
+axes[0, 0].set_ylabel('Number of Bookings')
+
+# By month
+month_order = ['January', 'February', 'March', 'April', 'May', 'June',
+               'July', 'August', 'September', 'October', 'November', 'December']
+monthly = df.groupby('arrival_date_month').size()
+monthly = monthly.reindex(month_order)
+
+axes[0, 1].bar(range(12), monthly.values, color='#2ecc71')
+axes[0, 1].set_xticks(range(12))
+axes[0, 1].set_xticklabels([m[:3] for m in month_order], rotation=45)
+axes[0, 1].set_title('Bookings by Month', fontsize=12, fontweight='bold')
+axes[0, 1].set_ylabel('Number of Bookings')
+
+# Cancellation rate by month
+cancel_by_month = df.groupby('arrival_date_month')['is_canceled'].mean() * 100
+cancel_by_month = cancel_by_month.reindex(month_order)
+
+axes[1, 0].plot(range(12), cancel_by_month.values, 'o-', color='#e74c3c', linewidth=2, markersize=8)
+axes[1, 0].set_xticks(range(12))
+axes[1, 0].set_xticklabels([m[:3] for m in month_order], rotation=45)
+axes[1, 0].set_title('Cancellation Rate by Month', fontsize=12, fontweight='bold')
+axes[1, 0].set_ylabel('Cancellation Rate (%)')
+axes[1, 0].set_ylim(0, 50)
+
+# Day of month distribution
+daily = df.groupby('arrival_date_day_of_month').size()
+axes[1, 1].bar(daily.index, daily.values, color='#9b59b6', alpha=0.7)
+axes[1, 1].set_title('Bookings by Day of Month', fontsize=12, fontweight='bold')
+axes[1, 1].set_xlabel('Day of Month')
+axes[1, 1].set_ylabel('Number of Bookings')
+
+plt.tight_layout()
+plt.show()
+```
+
+### Lead Time Analysis
+
+Lead time is a critical feature - the number of days between booking and arrival.
+
+```{python}
+#| label: fig-lead-time
+#| fig-cap: "Lead Time Distribution and Its Relationship with Cancellation"
+
+fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+
+# Lead time distribution
+axes[0].hist(df['lead_time'], bins=50, color='#3498db', edgecolor='white', alpha=0.7)
+axes[0].axvline(df['lead_time'].median(), color='red', linestyle='--', 
+                label=f'Median: {df["lead_time"].median():.0f} days')
+axes[0].axvline(df['lead_time'].mean(), color='orange', linestyle='--', 
+                label=f'Mean: {df["lead_time"].mean():.0f} days')
+axes[0].set_xlabel('Lead Time (days)', fontsize=12)
+axes[0].set_ylabel('Frequency', fontsize=12)
+axes[0].set_title('Distribution of Lead Time', fontsize=14, fontweight='bold')
+axes[0].legend()
+
+# Lead time vs cancellation
+lead_time_bins = pd.cut(df['lead_time'], bins=[0, 7, 30, 90, 180, 365, 800],
+                        labels=['0-7', '8-30', '31-90', '91-180', '181-365', '365+'])
+cancel_by_lead = df.groupby(lead_time_bins, observed=False)['is_canceled'].mean() * 100
+
+bars = axes[1].bar(range(len(cancel_by_lead)), cancel_by_lead.values, 
+                   color=plt.cm.Reds(np.linspace(0.3, 0.9, len(cancel_by_lead))))
+axes[1].set_xticks(range(len(cancel_by_lead)))
+axes[1].set_xticklabels(cancel_by_lead.index, rotation=45)
+axes[1].set_xlabel('Lead Time (days)', fontsize=12)
+axes[1].set_ylabel('Cancellation Rate (%)', fontsize=12)
+axes[1].set_title('Cancellation Rate by Lead Time', fontsize=14, fontweight='bold')
+
+for bar, val in zip(bars, cancel_by_lead.values):
+    axes[1].text(bar.get_x() + bar.get_width()/2, bar.get_height() + 1, 
+                 f'{val:.1f}%', ha='center', fontsize=10, fontweight='bold')
+
+plt.tight_layout()
+plt.show()
+```
+
+### Customer and Booking Characteristics
+
+```{python}
+#| label: fig-customer-analysis
+#| fig-cap: "Customer and Booking Characteristics"
+
+fig, axes = plt.subplots(2, 3, figsize=(15, 10))
+
+# Market segment
+market_cancel = df.groupby('market_segment')['is_canceled'].agg(['count', 'mean'])
+market_cancel = market_cancel.sort_values('count', ascending=True)
+
+axes[0, 0].barh(market_cancel.index, market_cancel['count'], color='#3498db')
+axes[0, 0].set_xlabel('Number of Bookings')
+axes[0, 0].set_title('Bookings by Market Segment', fontsize=12, fontweight='bold')
+
+# Deposit type
+deposit_cancel = df.groupby('deposit_type')['is_canceled'].mean() * 100
+bars = axes[0, 1].bar(deposit_cancel.index, deposit_cancel.values, 
+                      color=['#2ecc71', '#e74c3c', '#f39c12'])
+axes[0, 1].set_ylabel('Cancellation Rate (%)')
+axes[0, 1].set_title('Cancellation by Deposit Type', fontsize=12, fontweight='bold')
+for bar, val in zip(bars, deposit_cancel.values):
+    axes[0, 1].text(bar.get_x() + bar.get_width()/2, bar.get_height() + 1, 
+                   f'{val:.1f}%', ha='center', fontsize=10)
+
+# Customer type
+customer_cancel = df.groupby('customer_type')['is_canceled'].mean() * 100
+bars = axes[0, 2].bar(customer_cancel.index, customer_cancel.values, color='#9b59b6')
+axes[0, 2].set_ylabel('Cancellation Rate (%)')
+axes[0, 2].set_title('Cancellation by Customer Type', fontsize=12, fontweight='bold')
+axes[0, 2].tick_params(axis='x', rotation=45)
+
+# Repeated guest impact
+repeat_cancel = df.groupby('is_repeated_guest')['is_canceled'].mean() * 100
+bars = axes[1, 0].bar(['New Guest', 'Repeated Guest'], repeat_cancel.values, 
+                      color=['#e74c3c', '#2ecc71'])
+axes[1, 0].set_ylabel('Cancellation Rate (%)')
+axes[1, 0].set_title('New vs Repeated Guest', fontsize=12, fontweight='bold')
+for bar, val in zip(bars, repeat_cancel.values):
+    axes[1, 0].text(bar.get_x() + bar.get_width()/2, bar.get_height() + 1, 
+                   f'{val:.1f}%', ha='center', fontsize=11, fontweight='bold')
+
+# Special requests
+special_cancel = df.groupby('total_of_special_requests')['is_canceled'].mean() * 100
+axes[1, 1].plot(special_cancel.index, special_cancel.values, 'o-', 
+                color='#e74c3c', linewidth=2, markersize=10)
+axes[1, 1].set_xlabel('Number of Special Requests')
+axes[1, 1].set_ylabel('Cancellation Rate (%)')
+axes[1, 1].set_title('Special Requests vs Cancellation', fontsize=12, fontweight='bold')
+
+# ADR distribution
+axes[1, 2].hist(df[df['adr'] < 500]['adr'], bins=50, color='#3498db', 
+                edgecolor='white', alpha=0.7)
+axes[1, 2].axvline(df['adr'].median(), color='red', linestyle='--', 
+                   label=f'Median: €{df["adr"].median():.0f}')
+axes[1, 2].set_xlabel('Average Daily Rate (€)')
+axes[1, 2].set_ylabel('Frequency')
+axes[1, 2].set_title('ADR Distribution', fontsize=12, fontweight='bold')
+axes[1, 2].legend()
+
+plt.tight_layout()
+plt.show()
+```
+
+### Geographic Distribution
+
+```{python}
+#| label: fig-country-analysis
+#| fig-cap: "Top Countries by Booking Volume"
+
+# Top 15 countries
+top_countries = df['country'].value_counts().head(15)
+
+fig, ax = plt.subplots(figsize=(12, 6))
+bars = ax.bar(top_countries.index, top_countries.values, color='#3498db')
+ax.set_xlabel('Country Code', fontsize=12)
+ax.set_ylabel('Number of Bookings', fontsize=12)
+ax.set_title('Top 15 Countries by Booking Volume', fontsize=14, fontweight='bold')
+plt.xticks(rotation=45)
+
+# Add percentage labels
+total = top_countries.sum()
+for bar, val in zip(bars, top_countries.values):
+    ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 500, 
+            f'{val/df.shape[0]*100:.1f}%', ha='center', fontsize=9)
+
+plt.tight_layout()
+plt.show()
+
+print(f"\nTop 5 countries represent {top_countries.head().sum()/df.shape[0]*100:.1f}% of all bookings")
+```
+
+## Data Quality Assessment
+
+### Missing Values Analysis
+
+```{python}
+#| label: fig-missing-values
+#| fig-cap: "Missing Values Analysis"
+
+missing = df.isnull().sum()
+missing = missing[missing > 0].sort_values(ascending=False)
+
+if len(missing) > 0:
+    fig, ax = plt.subplots(figsize=(10, 6))
+    
+    colors = ['#e74c3c' if v > 1000 else '#f39c12' if v > 100 else '#2ecc71' 
+              for v in missing.values]
+    bars = ax.barh(missing.index, missing.values, color=colors)
+    ax.set_xlabel('Number of Missing Values', fontsize=12)
+    ax.set_title('Missing Values by Feature', fontsize=14, fontweight='bold')
+    
+    for bar, val in zip(bars, missing.values):
+        ax.text(val + 50, bar.get_y() + bar.get_height()/2, 
+                f'{val:,} ({val/len(df)*100:.2f}%)', va='center', fontsize=10)
+    
+    plt.tight_layout()
+    plt.show()
+else:
+    print("No missing values found in the dataset!")
+
+# Show NULL strings that might be missing values
+print("\n'NULL' string values in agent and company columns:")
+print(f"Agent NULL count: {(df['agent'] == 'NULL').sum() if df['agent'].dtype == 'object' else 'N/A'}")
+print(f"Company NULL count: {(df['company'] == 'NULL').sum() if df['company'].dtype == 'object' else 'N/A'}")
+```
+
+### Data Quality Issues Summary
+
+```{python}
+#| label: tbl-quality-issues
+#| tbl-cap: "Data Quality Issues Identified"
+
+quality_issues = pd.DataFrame({
+    'Issue': [
+        'Missing children values',
+        'Missing country values', 
+        'NULL agent values',
+        'NULL company values',
+        'Bookings with 0 guests',
+        'Negative ADR values',
+        'Extreme ADR outliers (>1000)',
+        'Undefined meal type'
+    ],
+    'Count': [
+        df['children'].isnull().sum(),
+        df['country'].isnull().sum(),
+        (df['agent'] == 'NULL').sum() if df['agent'].dtype == 'object' else df['agent'].isnull().sum(),
+        (df['company'] == 'NULL').sum() if df['company'].dtype == 'object' else df['company'].isnull().sum(),
+        ((df['adults'] + df['children'].fillna(0) + df['babies']) == 0).sum(),
+        (df['adr'] < 0).sum(),
+        (df['adr'] > 1000).sum(),
+        (df['meal'] == 'Undefined').sum()
+    ],
+    'Severity': [
+        'Low',
+        'Low',
+        'Medium',
+        'Medium', 
+        'High',
+        'High',
+        'Medium',
+        'Low'
+    ],
+    'Resolution': [
+        'Impute with 0',
+        'Impute with "Unknown"',
+        'Convert to 0 (direct booking)',
+        'Convert to 0 (no company)',
+        'Remove rows',
+        'Remove rows',
+        'Cap at 99th percentile',
+        'Keep as category'
+    ]
+})
+quality_issues
+```
+
+### Correlation Analysis
+
+```{python}
+#| label: fig-correlation
+#| fig-cap: "Correlation Matrix of Numerical Features with Target"
+
+# Select numerical features for correlation
+num_features = ['is_canceled', 'lead_time', 'stays_in_weekend_nights', 
+                'stays_in_week_nights', 'adults', 'children', 'babies',
+                'is_repeated_guest', 'previous_cancellations', 
+                'previous_bookings_not_canceled', 'booking_changes',
+                'days_in_waiting_list', 'adr', 'required_car_parking_spaces',
+                'total_of_special_requests']
+
+# Compute correlation
+corr_matrix = df[num_features].corr()
+
+# Plot
+fig, ax = plt.subplots(figsize=(12, 10))
+mask = np.triu(np.ones_like(corr_matrix, dtype=bool))
+sns.heatmap(corr_matrix, mask=mask, annot=True, fmt='.2f', 
+            cmap='RdBu_r', center=0, ax=ax,
+            square=True, linewidths=0.5)
+ax.set_title('Feature Correlation Matrix', fontsize=14, fontweight='bold')
+plt.tight_layout()
+plt.show()
+
+# Top correlations with target
+target_corr = corr_matrix['is_canceled'].drop('is_canceled').abs().sort_values(ascending=False)
+print("\nTop correlations with is_canceled:")
+print(target_corr.head(10))
+```
+
+## Key Insights from Data Understanding
+
+### Summary Statistics
+
+```{python}
+#| label: key-insights
+
+insights = """
+### Key Insights:
+
+1. **High Cancellation Rate**: Overall cancellation rate is {:.1f}%
+   - City Hotel: Higher cancellation rate
+   - Resort Hotel: Lower cancellation rate
+
+2. **Lead Time Impact**: Strong positive correlation with cancellations
+   - Bookings with >1 year lead time: Very high cancellation risk
+   - Last-minute bookings (0-7 days): Much lower cancellation risk
+
+3. **Customer Loyalty Matters**: 
+   - Repeated guests have significantly lower cancellation rates
+   - Previous cancellations predict future cancellations
+
+4. **Deposit Type Effect**:
+   - "No Deposit" bookings have moderate cancellation rates
+   - "Non Refund" deposits have very high cancellation rates (counter-intuitive!)
+   - This may indicate these are already problematic bookings
+
+5. **Special Requests Signal Commitment**:
+   - More special requests → Lower cancellation probability
+   - Guests with 0 special requests cancel more often
+
+6. **Seasonality**:
+   - Peak booking months: July, August
+   - Cancellation rates vary by month
+
+7. **Data Quality**:
+   - Missing values in children, country, agent, company
+   - Some bookings with 0 guests (data error)
+   - ADR outliers need handling
+""".format(df['is_canceled'].mean() * 100)
+
+print(insights)
+```
+
+## Next Steps
+
+Based on our data understanding, we need to:
+
+1. **Clean the data**: Handle missing values, remove invalid records
+2. **Engineer features**: Create derived features like total nights, total guests
+3. **Encode categoricals**: Prepare categorical variables for modeling
+4. **Handle class imbalance**: Consider techniques if needed
+5. **Split data**: Create train/test sets for modeling
+
+These steps will be addressed in the next chapter: Data Preparation.

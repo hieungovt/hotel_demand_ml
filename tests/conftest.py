@@ -7,8 +7,8 @@ import sys
 import os
 
 # Add project root to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from fastapi.testclient import TestClient
 from api.main import app
@@ -47,7 +47,7 @@ def sample_booking():
         "distribution_channel": 1,
         "deposit_type": 0,
         "customer_type": 1,
-        "season": 2
+        "season": 2,
     }
 
 
@@ -77,5 +77,5 @@ def high_risk_booking():
         "distribution_channel": 0,
         "deposit_type": 0,
         "customer_type": 0,
-        "season": 0
+        "season": 0,
     }

@@ -1,0 +1,69 @@
+---
+title: "Hotel Booking Cancellation Prediction"
+subtitle: "A Comprehensive CRISP-DM Machine Learning Project"
+---
+
+## Welcome {.unnumbered}
+
+This book documents the complete lifecycle of a machine learning project for predicting hotel booking cancellations and forecasting demand, following the **CRISP-DM (Cross-Industry Standard Process for Data Mining)** methodology.
+
+### Project Overview
+
+The hospitality industry faces significant challenges with booking cancellations. This project develops predictive models to:
+
+1. **Predict Cancellation Risk**: Classify bookings by their likelihood of cancellation
+2. **Forecast Demand**: Time series analysis to predict future booking volumes
+3. **Enable Proactive Management**: Provide actionable insights for revenue management
+
+### CRISP-DM Phases Covered
+
+| Phase | Description | Chapter |
+|-------|-------------|---------|
+| Business Understanding | Define objectives and success criteria | @sec-business |
+| Data Understanding | Explore and assess data quality | @sec-data-understanding |
+| Data Preparation | Clean, transform, and engineer features | @sec-data-preparation |
+| Modeling | Train and tune prediction models | @sec-modeling |
+| Evaluation | Assess model performance | @sec-evaluation |
+| Deployment | Productionize and serve models | @sec-deployment |
+
+### Dataset
+
+We use the **Hotel Booking Demand** dataset, which contains booking information for two types of hotels:
+
+- **Resort Hotel**: 40,060 bookings
+- **City Hotel**: 79,330 bookings
+
+The data spans from July 2015 to August 2017 and includes 32 features describing each booking.
+
+### How to Use This Book
+
+Navigate through the chapters sequentially to understand the complete ML workflow, or jump to specific sections based on your interest:
+
+- **Business stakeholders**: Focus on Business Understanding and Evaluation
+- **Data Scientists**: All chapters, especially Modeling and Evaluation
+- **ML Engineers**: Focus on Data Preparation and Deployment
+
+```{python}
+#| echo: false
+#| output: false
+
+import warnings
+warnings.filterwarnings('ignore')
+```
+
+### Technical Environment
+
+```{python}
+#| label: setup-info
+import sys
+import pandas as pd
+import numpy as np
+import sklearn
+import xgboost
+
+print(f"Python: {sys.version}")
+print(f"Pandas: {pd.__version__}")
+print(f"NumPy: {np.__version__}")
+print(f"Scikit-learn: {sklearn.__version__}")
+print(f"XGBoost: {xgboost.__version__}")
+```

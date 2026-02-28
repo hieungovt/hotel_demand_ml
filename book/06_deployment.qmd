@@ -1,0 +1,628 @@
+---
+title: "Deployment"
+---
+
+# Deployment {#sec-deployment}
+
+The final phase of CRISP-DM focuses on deploying the model into production, monitoring its performance, and ensuring it delivers business value.
+
+```{python}
+#| label: setup
+#| output: false
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import joblib
+import json
+import os
+import warnings
+
+warnings.filterwarnings('ignore')
+plt.style.use('seaborn-v0_8-whitegrid')
+```
+
+## Model Serialization
+
+The trained models have been serialized for deployment. Let's verify and document them.
+
+```{python}
+#| label: verify-models
+
+# Load and verify classification model
+clf_path = '../models/cancellation_model.pkl'
+clf_data = joblib.load(clf_path)
+
+print("=" * 60)
+print("CLASSIFICATION MODEL")
+print("=" * 60)
+print(f"Model Type: {clf_data['model_type']}")
+print(f"Algorithm: {type(clf_data['model']).__name__}")
+print(f"Number of Features: {len(clf_data['feature_names'])}")
+print(f"\nBest Hyperparameters:")
+for param, value in clf_data['best_params'].items():
+    print(f"  - {param}: {value}")
+print(f"\nStored Metrics:")
+for metric, value in clf_data['metrics'].items():
+    print(f"  - {metric}: {value:.4f}")
+print(f"\nModel File Size: {os.path.getsize(clf_path) / 1024:.1f} KB")
+
+# Load and verify time series model
+ts_path = '../models/demand_model.pkl'
+ts_data = joblib.load(ts_path)
+
+print("\n" + "=" * 60)
+print("TIME SERIES MODEL")
+print("=" * 60)
+print(f"Model Type: {ts_data['model_type']}")
+print(f"Order: {ts_data['order']}")
+print(f"Seasonal Order: {ts_data['seasonal_order']}")
+print(f"\nStored Metrics:")
+for metric, value in ts_data['metrics'].items():
+    print(f"  - {metric}: {value:.2f}")
+print(f"\nModel File Size: {os.path.getsize(ts_path) / 1024:.1f} KB")
+```
+
+### Feature Names Documentation
+
+```{python}
+#| label: tbl-features
+#| tbl-cap: "Model Features Documentation"
+
+features_doc = pd.DataFrame({
+    'Feature': clf_data['feature_names'],
+    'Index': range(len(clf_data['feature_names'])),
+    'Type': ['Numeric'] * 20 + ['Encoded'] * 7  # Approximate split
+})
+features_doc
+```
+
+## Model Loading and Inference
+
+### Classification Model Usage
+
+```{python}
+#| label: inference-example
+
+# Example: How to use the model for predictions
+model = clf_data['model']
+feature_names = clf_data['feature_names']
+
+# Create a sample booking (typical high-risk booking)
+sample_booking = {
+    'lead_time': 300,
+    'arrival_date_week_number': 32,
+    'arrival_month_num': 8,
+    'stays_in_weekend_nights': 2,
+    'stays_in_week_nights': 5,
+    'adults': 2,
+    'children': 0,
+    'babies': 0,
+    'is_repeated_guest': 0,
+    'previous_cancellations': 2,
+    'previous_bookings_not_canceled': 0,
+    'booking_changes': 0,
+    'days_in_waiting_list': 0,
+    'adr': 150.0,
+    'required_car_parking_spaces': 0,
+    'total_of_special_requests': 0,
+    'total_nights': 7,
+    'total_guests': 2,
+    'is_weekend_stay': 1,
+    'got_reserved_room': 1,
+    'hotel': 0,  # Encoded: City Hotel
+    'meal': 0,   # Encoded: BB
+    'market_segment': 4,  # Encoded: Online TA
+    'distribution_channel': 2,  # Encoded: TA/TO
+    'deposit_type': 1,  # Encoded: No Deposit
+    'customer_type': 3,  # Encoded: Transient
+    'season': 2  # Encoded: Summer
+}
+
+# Convert to DataFrame with correct feature order
+sample_df = pd.DataFrame([sample_booking])[feature_names]
+
+# Make prediction
+probability = model.predict_proba(sample_df)[0, 1]
+prediction = model.predict(sample_df)[0]
+risk_level = 'High' if probability > 0.7 else 'Medium' if probability > 0.4 else 'Low'
+
+print("Sample Booking Prediction:")
+print("=" * 50)
+print(f"Cancellation Probability: {probability:.2%}")
+print(f"Prediction: {'Likely to Cancel' if prediction == 1 else 'Likely to Complete'}")
+print(f"Risk Level: {risk_level}")
+```
+
+### Batch Prediction Function
+
+```{python}
+#| label: batch-prediction
+
+def predict_cancellations(bookings_df, model_path='../models/cancellation_model.pkl'):
+    """
+    Predict cancellation probabilities for a batch of bookings.
+    
+    Parameters:
+    -----------
+    bookings_df : pd.DataFrame
+        DataFrame with booking features
+    model_path : str
+        Path to the serialized model
+        
+    Returns:
+    --------
+    pd.DataFrame with predictions
+    """
+    # Load model
+    model_data = joblib.load(model_path)
+    model = model_data['model']
+    feature_names = model_data['feature_names']
+    
+    # Ensure correct feature order
+    X = bookings_df[feature_names]
+    
+    # Get predictions
+    predictions = model.predict(X)
+    probabilities = model.predict_proba(X)[:, 1]
+    
+    # Assign risk levels
+    risk_levels = pd.cut(
+        probabilities,
+        bins=[0, 0.4, 0.7, 1.0],
+        labels=['Low', 'Medium', 'High']
+    )
+    
+    # Create result DataFrame
+    result = bookings_df.copy()
+    result['cancel_probability'] = probabilities
+    result['predicted_cancel'] = predictions
+    result['risk_level'] = risk_levels
+    
+    return result
+
+# Demonstrate with sample data
+print("Batch Prediction Function Created")
+print("Usage: result_df = predict_cancellations(bookings_df)")
+```
+
+### Demand Forecasting Function
+
+```{python}
+#| label: demand-forecast
+
+def forecast_demand(days_ahead=30, model_path='../models/demand_model.pkl'):
+    """
+    Forecast booking demand for the next N days.
+    
+    Parameters:
+    -----------
+    days_ahead : int
+        Number of days to forecast
+    model_path : str
+        Path to the serialized model
+        
+    Returns:
+    --------
+    pd.DataFrame with forecast
+    """
+    # Load model
+    model_data = joblib.load(model_path)
+    sarima_model = model_data['model']
+    last_date = model_data['last_date']
+    
+    # Generate forecast
+    forecast = sarima_model.get_forecast(steps=days_ahead)
+    forecast_mean = forecast.predicted_mean
+    forecast_ci = forecast.conf_int()
+    
+    # Create result DataFrame
+    result = pd.DataFrame({
+        'date': pd.date_range(start=last_date + pd.Timedelta(days=1), 
+                              periods=days_ahead),
+        'forecast': forecast_mean.values,
+        'lower_ci': forecast_ci.iloc[:, 0].values,
+        'upper_ci': forecast_ci.iloc[:, 1].values
+    })
+    
+    return result
+
+# Generate sample forecast
+forecast_df = forecast_demand(days_ahead=14)
+print("14-Day Demand Forecast:")
+print(forecast_df.to_string(index=False))
+```
+
+## API Integration
+
+The model is designed to work with the existing FastAPI application. Here's how to integrate:
+
+```{python}
+#| label: api-code
+
+api_code = '''
+# api/main.py - Key prediction endpoints
+
+from fastapi import FastAPI
+import joblib
+import pandas as pd
+
+app = FastAPI(title="Hotel Booking Prediction API")
+
+# Load models at startup
+clf_model = joblib.load("models/cancellation_model.pkl")
+ts_model = joblib.load("models/demand_model.pkl")
+
+@app.post("/predict/cancellation")
+async def predict_cancellation(booking: dict):
+    """Predict cancellation probability for a single booking."""
+    model = clf_model['model']
+    features = clf_model['feature_names']
+    
+    # Prepare input
+    X = pd.DataFrame([booking])[features]
+    
+    # Predict
+    probability = float(model.predict_proba(X)[0, 1])
+    prediction = int(model.predict(X)[0])
+    
+    return {
+        "probability": probability,
+        "will_cancel": bool(prediction),
+        "risk_level": "High" if probability > 0.7 else "Medium" if probability > 0.4 else "Low"
+    }
+
+@app.get("/predict/demand")
+async def predict_demand(days: int = 30):
+    """Forecast booking demand for specified days ahead."""
+    model = ts_model['model']
+    forecast = model.get_forecast(steps=days)
+    
+    return {
+        "forecast": forecast.predicted_mean.tolist(),
+        "dates": [str(d) for d in pd.date_range(
+            start=ts_model['last_date'] + pd.Timedelta(days=1),
+            periods=days
+        )]
+    }
+'''
+
+print(api_code)
+```
+
+## Deployment Architecture
+
+```{python}
+#| label: fig-architecture
+#| fig-cap: "Deployment Architecture Diagram"
+
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+
+fig, ax = plt.subplots(figsize=(14, 8))
+ax.set_xlim(0, 14)
+ax.set_ylim(0, 10)
+ax.axis('off')
+
+# Define component positions and sizes
+components = {
+    'Hotel PMS': (1, 7, '#3498db'),
+    'API Gateway': (4, 7, '#f39c12'),
+    'FastAPI\nService': (7, 7, '#2ecc71'),
+    'ML Models': (10, 7, '#e74c3c'),
+    'Booking DB': (1, 3, '#9b59b6'),
+    'Redis Cache': (7, 3, '#1abc9c'),
+    'Monitoring': (10, 3, '#34495e'),
+    'Dashboard': (4, 3, '#e67e22')
+}
+
+# Draw components
+for name, (x, y, color) in components.items():
+    rect = mpatches.FancyBboxPatch((x-0.9, y-0.6), 1.8, 1.2,
+                                    boxstyle="round,pad=0.1",
+                                    facecolor=color, edgecolor='black',
+                                    linewidth=2, alpha=0.8)
+    ax.add_patch(rect)
+    ax.text(x, y, name, ha='center', va='center', 
+            fontsize=10, fontweight='bold', color='white')
+
+# Draw arrows
+arrows = [
+    ((2, 7), (3, 7)),      # PMS -> Gateway
+    ((5, 7), (6, 7)),      # Gateway -> FastAPI
+    ((8, 7), (9, 7)),      # FastAPI -> Models
+    ((1, 6.4), (1, 3.6)),  # PMS -> DB
+    ((7, 6.4), (7, 3.6)),  # FastAPI -> Cache
+    ((10, 6.4), (10, 3.6)), # Models -> Monitoring
+    ((5, 3), (6, 3)),      # Dashboard -> Cache
+    ((3, 3), (2, 3))       # Dashboard -> DB
+]
+
+for start, end in arrows:
+    ax.annotate('', xy=end, xytext=start,
+                arrowprops=dict(arrowstyle='->', color='black', lw=2))
+
+# Title
+ax.text(7, 9, 'Deployment Architecture', ha='center', fontsize=16, fontweight='bold')
+
+# Legend
+ax.text(1, 1, 'Data Flow: PMS → API → Model → Response', fontsize=10, style='italic')
+
+plt.tight_layout()
+plt.show()
+```
+
+## Model Monitoring
+
+### Key Metrics to Track
+
+```{python}
+#| label: tbl-monitoring
+#| tbl-cap: "Model Monitoring Metrics"
+
+monitoring_metrics = pd.DataFrame({
+    'Category': [
+        'Model Performance', 'Model Performance', 'Model Performance',
+        'Data Quality', 'Data Quality', 'Data Quality',
+        'System Health', 'System Health', 'System Health',
+        'Business KPIs', 'Business KPIs', 'Business KPIs'
+    ],
+    'Metric': [
+        'Weekly ROC-AUC', 'Precision@Threshold', 'Recall@Threshold',
+        'Feature Distribution Drift', 'Missing Value Rate', 'Prediction Distribution',
+        'API Latency (p95)', 'Error Rate', 'Request Volume',
+        'Intervention Success Rate', 'Revenue Protected', 'False Positive Cost'
+    ],
+    'Target': [
+        '> 0.80', '> 0.65', '> 0.70',
+        '< 10% shift', '< 1%', 'Within 10% of training',
+        '< 100ms', '< 0.1%', 'Monitor trends',
+        '> 30%', '> €10K/month', '< €5K/month'
+    ],
+    'Alert Threshold': [
+        '< 0.75', '< 0.60', '< 0.65',
+        '> 15% shift', '> 5%', '> 20% shift',
+        '> 200ms', '> 1%', '> 3σ change',
+        '< 20%', '< €5K/month', '> €10K/month'
+    ]
+})
+monitoring_metrics
+```
+
+### Model Drift Detection
+
+```{python}
+#| label: fig-drift-simulation
+#| fig-cap: "Simulated Model Drift Detection Dashboard"
+
+# Simulate weekly performance metrics
+np.random.seed(42)
+weeks = 12
+dates = pd.date_range(start='2026-01-01', periods=weeks, freq='W')
+
+# Simulate gradual drift
+base_auc = 0.87
+drift = np.linspace(0, 0.05, weeks) + np.random.normal(0, 0.01, weeks)
+simulated_auc = base_auc - drift
+
+fig, axes = plt.subplots(2, 2, figsize=(14, 8))
+
+# ROC-AUC over time
+axes[0, 0].plot(dates, simulated_auc, 'o-', color='#3498db', linewidth=2, markersize=8)
+axes[0, 0].axhline(y=0.85, color='green', linestyle='--', label='Target (0.85)')
+axes[0, 0].axhline(y=0.80, color='orange', linestyle='--', label='Warning (0.80)')
+axes[0, 0].axhline(y=0.75, color='red', linestyle='--', label='Alert (0.75)')
+axes[0, 0].fill_between(dates, 0.75, simulated_auc, 
+                         where=(simulated_auc < 0.80), 
+                         color='orange', alpha=0.3)
+axes[0, 0].set_ylabel('ROC-AUC')
+axes[0, 0].set_title('Model Performance Over Time', fontweight='bold')
+axes[0, 0].legend(loc='lower left')
+axes[0, 0].set_ylim(0.70, 0.95)
+axes[0, 0].tick_params(axis='x', rotation=45)
+
+# Prediction distribution
+axes[0, 1].hist(np.random.beta(2, 3, 1000), bins=30, alpha=0.5, 
+                label='Training', color='#3498db')
+axes[0, 1].hist(np.random.beta(2.2, 2.8, 1000), bins=30, alpha=0.5, 
+                label='Current', color='#e74c3c')
+axes[0, 1].set_xlabel('Predicted Probability')
+axes[0, 1].set_ylabel('Frequency')
+axes[0, 1].set_title('Prediction Distribution Drift', fontweight='bold')
+axes[0, 1].legend()
+
+# API latency
+latency = 15 + np.random.exponential(5, weeks)
+axes[1, 0].bar(dates, latency, color='#2ecc71', width=5)
+axes[1, 0].axhline(y=100, color='red', linestyle='--', label='SLA (100ms)')
+axes[1, 0].set_ylabel('P95 Latency (ms)')
+axes[1, 0].set_title('API Response Time', fontweight='bold')
+axes[1, 0].legend()
+axes[1, 0].tick_params(axis='x', rotation=45)
+
+# Request volume
+volume = 5000 + np.random.normal(0, 500, weeks).cumsum()
+axes[1, 1].plot(dates, volume, 'o-', color='#9b59b6', linewidth=2, markersize=8)
+axes[1, 1].fill_between(dates, 0, volume, alpha=0.3, color='#9b59b6')
+axes[1, 1].set_ylabel('Daily Predictions')
+axes[1, 1].set_title('Prediction Volume', fontweight='bold')
+axes[1, 1].tick_params(axis='x', rotation=45)
+
+plt.tight_layout()
+plt.show()
+```
+
+## Retraining Strategy
+
+### Triggers for Retraining
+
+1. **Scheduled**: Quarterly retraining with latest 12 months of data
+2. **Performance-Based**: When ROC-AUC drops below 0.80 for 2 consecutive weeks
+3. **Drift-Based**: When feature distributions shift > 15% from training
+4. **Event-Based**: After major business changes (new hotel, policy changes)
+
+### Retraining Pipeline
+
+```
+1. Data Collection (last 12 months)
+   ↓
+2. Data Quality Checks
+   ↓
+3. Feature Engineering (same pipeline)
+   ↓
+4. Model Training (same architecture)
+   ↓
+5. A/B Testing (shadow mode)
+   ↓
+6. Champion/Challenger Comparison
+   ↓
+7. Production Deployment
+```
+
+### Version Control
+
+- Models versioned with timestamp and metrics
+- Rollback capability to previous 3 versions
+- All training data and parameters logged
+
+### Current Model Version
+
+```{python}
+#| label: model-version
+
+print("Current Model Version Information:")
+print("=" * 40)
+print("Version: v1.0.0")
+print("Training Date: 2026-02-04")
+print("Training Data: 2015-07 to 2017-08")
+print("Next Scheduled Retrain: 2026-05-01")
+```
+
+## Documentation Summary
+
+```{python}
+#| label: tbl-deployment-summary
+#| tbl-cap: "Deployment Checklist"
+
+checklist = pd.DataFrame({
+    'Task': [
+        'Model Serialization',
+        'Feature Pipeline Documentation',
+        'API Endpoints',
+        'Docker Container',
+        'CI/CD Pipeline',
+        'Monitoring Setup',
+        'Alerting Rules',
+        'Runbook Documentation',
+        'A/B Testing Framework',
+        'Rollback Procedure'
+    ],
+    'Status': [
+        '✅ Complete',
+        '✅ Complete',
+        '✅ Implemented',
+        '✅ Dockerfile ready',
+        '⏳ In Progress',
+        '⏳ In Progress',
+        '⏳ In Progress',
+        '✅ Complete',
+        '⏳ In Progress',
+        '✅ Documented'
+    ],
+    'Location': [
+        'models/',
+        'src/preprocessing.py',
+        'api/main.py',
+        'Dockerfile',
+        '.github/workflows/',
+        'monitoring/',
+        'monitoring/alerts.yml',
+        'docs/runbook.md',
+        'src/ab_testing.py',
+        'docs/rollback.md'
+    ]
+})
+checklist
+```
+
+## Project Summary
+
+### CRISP-DM Lifecycle Complete
+
+```{python}
+#| label: fig-crisp-summary
+#| fig-cap: "CRISP-DM Project Summary"
+
+fig, ax = plt.subplots(figsize=(12, 8))
+ax.set_xlim(0, 12)
+ax.set_ylim(0, 10)
+ax.axis('off')
+
+# CRISP-DM phases as a cycle
+phases = [
+    ('Business\nUnderstanding', 2, 8, '#3498db'),
+    ('Data\nUnderstanding', 5, 9, '#2ecc71'),
+    ('Data\nPreparation', 8, 8, '#f39c12'),
+    ('Modeling', 9.5, 5, '#e74c3c'),
+    ('Evaluation', 7, 2, '#9b59b6'),
+    ('Deployment', 3, 2, '#1abc9c')
+]
+
+# Draw phase circles
+for name, x, y, color in phases:
+    circle = plt.Circle((x, y), 1.2, color=color, alpha=0.8)
+    ax.add_patch(circle)
+    ax.text(x, y, name, ha='center', va='center', 
+            fontsize=10, fontweight='bold', color='white')
+    ax.text(x, y-1.5, '✓', fontsize=20, ha='center', color='green')
+
+# Draw arrows between phases
+arrow_style = dict(arrowstyle='->', color='gray', lw=2)
+ax.annotate('', xy=(4.5, 8.8), xytext=(3, 8), arrowprops=arrow_style)
+ax.annotate('', xy=(7.5, 8.2), xytext=(5.5, 9), arrowprops=arrow_style)
+ax.annotate('', xy=(9.2, 6), xytext=(8.5, 7.5), arrowprops=arrow_style)
+ax.annotate('', xy=(8, 2.5), xytext=(9, 4.5), arrowprops=arrow_style)
+ax.annotate('', xy=(4, 2), xytext=(6, 2), arrowprops=arrow_style)
+
+# Title
+ax.text(6, 5.5, 'CRISP-DM\nComplete', ha='center', va='center',
+        fontsize=14, fontweight='bold', style='italic')
+
+ax.set_title('Hotel Booking ML Project - All Phases Complete', 
+             fontsize=16, fontweight='bold', y=1.02)
+
+plt.tight_layout()
+plt.show()
+```
+
+### Key Achievements
+
+| Phase | Key Achievement |
+|-------|-----------------|
+| Business Understanding | Clear objectives defined, success criteria established |
+| Data Understanding | 119K bookings analyzed, 32 features explored |
+| Data Preparation | Clean pipeline, 27 engineered features |
+| Modeling | XGBoost classifier (ROC-AUC: 0.87), SARIMA forecaster |
+| Evaluation | All business targets met, optimized threshold identified |
+| Deployment | Models serialized, API ready, monitoring defined |
+
+### Business Value Delivered
+
+- **Cancellation Prediction**: 75%+ recall enables proactive interventions
+- **Demand Forecasting**: <15% MAPE supports revenue management
+- **Estimated Annual Impact**: €50K+ in protected revenue
+- **Operational Efficiency**: Automated risk assessment and forecasting
+
+### Next Steps
+
+1. Complete CI/CD pipeline setup
+2. Implement A/B testing framework
+3. Deploy to production environment
+4. Train hotel staff on dashboard usage
+5. Schedule quarterly model reviews
+
+---
+
+**Project Complete** 🎉
+
+This concludes the CRISP-DM lifecycle documentation for the Hotel Booking Cancellation Prediction project.

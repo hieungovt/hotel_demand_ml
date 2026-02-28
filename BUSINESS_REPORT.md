@@ -202,6 +202,6 @@ The models are now deployed as a REST API, ready for integration with existing h
 
 ---
 
-*Report generated: February 2026*  
+
 *Methodology: CRISP-DM (Cross-Industry Standard Process for Data Mining)*  
 *Models: XGBoost Classification, Prophet Time Series*

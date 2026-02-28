@@ -7,7 +7,7 @@ from .preprocessing import (
     clean_data,
     engineer_features,
     prepare_classification_data,
-    prepare_time_series_data
+    prepare_time_series_data,
 )
 
 from .classification_model import CancellationClassifier

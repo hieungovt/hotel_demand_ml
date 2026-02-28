@@ -1,0 +1,39 @@
+project:
+  type: book
+  output-dir: _book
+
+book:
+  title: "Hotel Booking Cancellation Prediction"
+  subtitle: "A CRISP-DM Machine Learning Project"
+  author: "Data Science Team"
+  date: "2026-02-04"
+  chapters:
+    - index.qmd
+    - 01_business_understanding.qmd
+    - 02_data_understanding.qmd
+    - 03_data_preparation.qmd
+    - 04_modeling.qmd
+    - 05_evaluation.qmd
+    - 06_deployment.qmd
+
+format:
+  html:
+    theme: cosmo
+    toc: true
+    toc-depth: 3
+    number-sections: true
+    code-fold: show
+    code-tools: true
+    code-copy: true
+    code-line-numbers: true
+    highlight-style: github
+    fig-width: 10
+    fig-height: 6
+
+execute:
+  echo: true
+  warning: false
+  message: false
+  freeze: auto
+
+bibliography: []

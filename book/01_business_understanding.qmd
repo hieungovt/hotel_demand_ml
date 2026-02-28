@@ -1,0 +1,251 @@
+---
+title: "Business Understanding"
+---
+
+# Business Understanding {#sec-business}
+
+The first phase of CRISP-DM focuses on understanding the project objectives and requirements from a business perspective. This understanding is then converted into a data mining problem definition.
+
+## Business Context
+
+### The Hotel Industry Challenge
+
+The hospitality industry is characterized by:
+
+- **Perishable inventory**: Unsold room nights cannot be stored
+- **Variable demand**: Seasonal patterns, events, and economic conditions affect bookings
+- **Cancellation volatility**: Flexible booking policies lead to high cancellation rates
+- **Revenue management complexity**: Dynamic pricing and overbooking decisions
+
+### The Problem of Cancellations
+
+Hotel booking cancellations create significant operational and financial challenges:
+
+1. **Revenue Loss**: Empty rooms that could have been sold
+2. **Operational Disruption**: Staffing and resource allocation becomes difficult
+3. **Forecasting Errors**: Inaccurate occupancy predictions
+4. **Overbooking Risks**: Compensating may lead to guest displacement
+
+```{python}
+#| label: fig-business-impact
+#| fig-cap: "Illustration of cancellation impact on hotel operations"
+
+import matplotlib.pyplot as plt
+import numpy as np
+
+# Visualize the cascading impact
+fig, ax = plt.subplots(figsize=(10, 6))
+
+impacts = ['Revenue\nLoss', 'Operational\nDisruption', 'Forecasting\nErrors', 
+           'Overbooking\nRisks', 'Customer\nDissatisfaction']
+severity = [85, 70, 75, 65, 60]
+colors = plt.cm.Reds(np.linspace(0.4, 0.9, len(impacts)))
+
+bars = ax.barh(impacts, severity, color=colors)
+ax.set_xlabel('Business Impact Score', fontsize=12)
+ax.set_title('Cascading Impact of Booking Cancellations', fontsize=14, fontweight='bold')
+ax.set_xlim(0, 100)
+
+for bar, val in zip(bars, severity):
+    ax.text(val + 2, bar.get_y() + bar.get_height()/2, f'{val}%', 
+            va='center', fontsize=11, fontweight='bold')
+
+plt.tight_layout()
+plt.show()
+```
+
+## Business Objectives
+
+### Primary Objectives
+
+1. **Reduce Cancellation Impact**
+   - Predict which bookings are likely to cancel
+   - Enable proactive interventions (deposits, confirmations, incentives)
+   - Target: Identify 80% of cancellations with actionable lead time
+
+2. **Improve Revenue Forecasting**
+   - Forecast actual arrivals, not just bookings
+   - Enable better dynamic pricing decisions
+   - Target: Reduce forecasting error by 25%
+
+3. **Optimize Operations**
+   - Better staffing and resource allocation
+   - Reduce overbooking incidents
+   - Target: Improve operational efficiency by 15%
+
+### Success Criteria
+
+```{python}
+#| label: tbl-success-criteria
+#| tbl-cap: "Project Success Criteria"
+
+import pandas as pd
+
+success_criteria = pd.DataFrame({
+    'Objective': [
+        'Cancellation Prediction',
+        'Cancellation Prediction',
+        'Cancellation Prediction',
+        'Demand Forecasting',
+        'Demand Forecasting',
+        'Business Value'
+    ],
+    'Metric': [
+        'Recall (Sensitivity)',
+        'Precision',
+        'ROC-AUC Score',
+        'MAPE (Mean Absolute % Error)',
+        'Forecast Horizon',
+        'Revenue Protection'
+    ],
+    'Target': [
+        '≥ 75%',
+        '≥ 70%',
+        '≥ 0.85',
+        '< 15%',
+        '30 days ahead',
+        '> $50K annually'
+    ],
+    'Priority': [
+        'High',
+        'Medium',
+        'High',
+        'High',
+        'Medium',
+        'High'
+    ]
+})
+
+success_criteria
+```
+
+## Data Mining Problem Definition
+
+### Classification Problem: Cancellation Prediction
+
+**Goal**: Predict whether a booking will be canceled (`is_canceled` = 1) or not (`is_canceled` = 0)
+
+**Type**: Binary Classification
+
+**Target Variable**: `is_canceled`
+
+**Business Translation**:
+
+| Model Output | Business Action |
+|--------------|-----------------|
+| High cancellation probability (>70%) | Request deposit or confirmation call |
+| Medium probability (40-70%) | Send reminder emails |
+| Low probability (<40%) | Standard handling |
+
+### Time Series Problem: Demand Forecasting
+
+**Goal**: Forecast daily booking arrivals for the next 30 days
+
+**Type**: Univariate Time Series Forecasting
+
+**Target Variable**: Daily count of non-canceled bookings
+
+**Business Translation**:
+
+- Input to revenue management systems
+- Staffing and inventory planning
+- Marketing campaign timing
+
+## Constraints and Considerations
+
+### Technical Constraints
+
+- Model must provide real-time predictions (< 100ms latency)
+- Must handle batch processing for daily forecasts
+- Integration with existing hotel management systems via API
+
+### Business Constraints
+
+- Guest privacy must be protected
+- Predictions should be explainable to hotel staff
+- False positives (predicting cancellation when guest shows up) are costly
+
+### Ethical Considerations
+
+- Avoid discrimination based on nationality or demographics
+- Transparent pricing policies
+- Fair treatment regardless of predicted cancellation risk
+
+## Stakeholder Analysis
+
+```{python}
+#| label: fig-stakeholders
+#| fig-cap: "Stakeholder interest and influence matrix"
+
+import matplotlib.pyplot as plt
+import numpy as np
+
+fig, ax = plt.subplots(figsize=(10, 8))
+
+stakeholders = {
+    'Revenue Manager': (9, 9),
+    'Front Desk Staff': (6, 4),
+    'General Manager': (8, 10),
+    'IT Department': (5, 6),
+    'Marketing Team': (7, 5),
+    'Data Science Team': (9, 7),
+    'Finance': (6, 8),
+    'Guests': (8, 3)
+}
+
+for name, (interest, influence) in stakeholders.items():
+    ax.scatter(interest, influence, s=300, alpha=0.6)
+    ax.annotate(name, (interest, influence), 
+                xytext=(5, 5), textcoords='offset points',
+                fontsize=10, fontweight='bold')
+
+ax.set_xlabel('Interest Level', fontsize=12)
+ax.set_ylabel('Influence Level', fontsize=12)
+ax.set_title('Stakeholder Analysis Matrix', fontsize=14, fontweight='bold')
+ax.set_xlim(0, 11)
+ax.set_ylim(0, 11)
+ax.axhline(y=5.5, color='gray', linestyle='--', alpha=0.5)
+ax.axvline(x=5.5, color='gray', linestyle='--', alpha=0.5)
+
+# Quadrant labels
+ax.text(8, 10.5, 'Key Players', fontsize=10, style='italic', color='green')
+ax.text(8, 0.5, 'Keep Informed', fontsize=10, style='italic', color='blue')
+ax.text(2, 10.5, 'Keep Satisfied', fontsize=10, style='italic', color='orange')
+ax.text(2, 0.5, 'Monitor', fontsize=10, style='italic', color='gray')
+
+ax.grid(True, alpha=0.3)
+plt.tight_layout()
+plt.show()
+```
+
+## Project Plan Overview
+
+### Timeline and Milestones
+
+| Phase | Duration | Key Deliverables |
+|-------|----------|------------------|
+| Business Understanding | Week 1 | Requirements doc, success criteria |
+| Data Understanding | Week 1-2 | EDA report, data quality assessment |
+| Data Preparation | Week 2-3 | Clean dataset, feature engineering |
+| Modeling | Week 3-4 | Trained models, hyperparameter tuning |
+| Evaluation | Week 4-5 | Performance report, business validation |
+| Deployment | Week 5-6 | API, monitoring, documentation |
+
+### Resource Requirements
+
+- **Data**: Hotel booking records (provided)
+- **Compute**: Standard laptop/server for training
+- **Tools**: Python, scikit-learn, XGBoost, Prophet
+- **Team**: 1-2 data scientists
+
+## Summary
+
+In this phase, we established:
+
+1. ✅ **Business context**: Hotel cancellations cause significant revenue and operational impact
+2. ✅ **Clear objectives**: Predict cancellations (>75% recall) and forecast demand (<15% MAPE)
+3. ✅ **Problem definition**: Binary classification + time series forecasting
+4. ✅ **Success criteria**: Quantifiable metrics aligned with business goals
+5. ✅ **Stakeholder buy-in**: Key players identified and engaged
+
+The next phase will dive into understanding our data through comprehensive exploratory analysis.

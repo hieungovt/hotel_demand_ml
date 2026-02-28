@@ -1,4 +1,21 @@
-# Git ignore file
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.vscode/
+.env
+.DS_Store
+data/processed/
+models/
+book/_book/
+_freeze/
+charts/
+*.pkl
+/.pytest_cache/
+coverage.xml
+dist/
+venv/
+env/
+__pycache__/# Git ignore file
 
 # Python
 __pycache__/
